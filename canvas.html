@@ -1,0 +1,274 @@
+<!doctype html> 
+<html>
+  <meta charset='utf-8'>
+  <head>
+    <title>imgExample</title>
+  </head>
+  <body>
+   <div id='info'>FFFF</div>
+   <style>
+   #info {
+    background-color: #c0c0c0;
+    position:fixed;
+    top:0;
+    width:100%;
+    z-index:100;
+}
+ </style>
+    <canvas id='example'>Обновите браузер</canvas>
+    <audio id="click_sound" src="click_sound.mp3" ></audio>
+    <audio id="mouseover_sound" src="mouseover_sound.mp3" ></audio>
+    
+    <script>
+      map_data = {"23":{"x":965,"y":1530},"26":{"x":1305,"y":1657},"21":{"x":1404,"y":1310},"20":{"x":1581,"y":546},"6":{"x":238,"y":684},"7":{"x":667,"y":311},"18":{"x":1248,"y":647},"28":{"x":2026,"y":2541},"9":{"x":480,"y":802},"17":{"x":554,"y":1336},"15":{"x":714,"y":990},"11":{"x":720,"y":745},"16":{"x":897,"y":1159},"13":{"x":947,"y":643},"14":{"x":984,"y":252},"25":{"x":1126,"y":850},"19":{"x":1150,"y":1050},"22":{"x":1290,"y":349},"24":{"x":1632,"y":908},"27":{"x":1794,"y":1978},"10":{"x":462,"y":1061},"8":{"x":475,"y":506},"12":{"x":783,"y":498}};
+
+      var circle_radius = 35;
+      var big_circle_radius = 43;
+
+      var  map       = new Image();              // "Создаём" изображение
+      map.src    = 'mmb2019v-l1a.png';  // Источник изображения, позаимствовано на хабре
+      var global_ctx = '';
+
+      test_mode = false; //В тестовом моде можно начинать маршрут с любого КП. Если false, то в route Должен быть уже один пункт.
+      route = [6];
+      start_point = 6;
+      finish_point = 26;
+
+      km_factor = 394;
+
+      best_route = 6104.835740754429;
+      best_route_km = best_route /km_factor;
+
+
+      state_marked = false;
+
+      function getWidth() {
+  return Math.max(
+    document.body.scrollWidth,
+    document.documentElement.scrollWidth,
+    document.body.offsetWidth,
+    document.documentElement.offsetWidth,
+    document.documentElement.clientWidth
+  );
+}
+
+function getHeight() {
+  return Math.max(
+    document.body.scrollHeight,
+    document.documentElement.scrollHeight,
+    document.body.offsetHeight,
+    document.documentElement.offsetHeight,
+    document.documentElement.clientHeight
+  );
+}
+
+function getScrollbarWidth() {
+
+  // Creating invisible container
+  const outer = document.createElement('div');
+  outer.style.visibility = 'hidden';
+  outer.style.overflow = 'scroll'; // forcing scrollbar to appear
+  outer.style.msOverflowStyle = 'scrollbar'; // needed for WinJS apps
+  document.body.appendChild(outer);
+
+  // Creating inner element and placing it in the container
+  const inner = document.createElement('div');
+  outer.appendChild(inner);
+
+  // Calculating difference between container's full width and the child width
+  const scrollbarWidth = (outer.offsetWidth - inner.offsetWidth);
+
+  // Removing temporary elements from the DOM
+  outer.parentNode.removeChild(outer);
+
+  return scrollbarWidth;
+
+}
+
+screen_width = getWidth();
+screen_height = getHeight();
+
+      map.onload = function() {    // Событие onLoad, ждём момента пока загрузится изображение
+        redraw_canvas(null);
+        show_info();
+      }
+      var canvas = document.getElementById('example');
+      canvas.addEventListener("mousemove", mouse_move, false);
+      canvas.addEventListener('click',mouse_click,false);
+      window.addEventListener('contextmenu',context_menu,false);
+      window.addEventListener('keydown',key_down,false);
+
+      function redraw_canvas(big_circle_name){
+        var canvas = document.getElementById("example");
+        real_width = screen_width - canvas.offsetLeft - getScrollbarWidth();
+        scale_factor = real_width/map.width;
+        canvas.width = real_width;
+        canvas.height = map.height*scale_factor;
+        var ctx       = canvas.getContext('2d'); // Контекст
+        ctx.scale(scale_factor,scale_factor);
+        ctx.drawImage(map, 0, 0);  // Рисуем изображение от точки с координатами 0, 0
+        global_ctx = ctx;
+
+        for (var key in map_data)
+        {
+          //console.log(key);
+          circle = new Path2D();
+          radius = circle_radius;
+          if (key == big_circle_name){
+            radius = big_circle_radius;
+          }
+          circle.arc(map_data[key].x+1,map_data[key].y+1,radius,0,2*Math.PI,true);
+       
+          ctx.strokeStyle = 'red'; // I'd like to set with CSS
+          ctx.lineWidth = 5; // I'd like to set with CSS
+
+          ctx.stroke(circle);
+          map_data[key]['canvas'] = circle;
+        }
+        if (route.length > 1)
+        {
+          line = new Path2D();
+          start = map_data[route[0]];
+          line.moveTo(start.x, start.y);
+          route.slice(1).forEach(function(elem, i, arr){
+              line.lineTo(map_data[elem].x, map_data[elem].y);                
+              });
+          ctx.stroke(line);
+        }
+        
+      }
+
+
+      function get_coords(event)
+      {
+        x_coord = event.pageX;
+        y_coord = event.pageY;
+        gCanvasElement = document.getElementById('example');
+        x_coord -= gCanvasElement.offsetLeft;
+        y_coord -= gCanvasElement.offsetTop;
+        x_coord = x_coord/scale_factor;
+        y_coord = y_coord/scale_factor;
+        return [x_coord,y_coord];
+      }
+
+      function mouse_move(event){
+        
+        var [x_coord,y_coord] = get_coords(event);
+        //console.log(x_coord,y_coord);
+        var found = false;
+        for (var key in map_data)
+        {
+          to_center = Math.sqrt(Math.pow(x_coord-map_data[key].x,2) + Math.pow(y_coord-map_data[key].y,2));
+          if (to_center <= circle_radius){
+            if (route.includes(key)){
+              break; // Не надо увеличивать, так как уже добавлен.
+            }
+            found = true;
+            if(state_marked == false)
+            {
+              redraw_canvas(key);
+              state_marked = true;
+              var audio = document.getElementById('mouseover_sound');
+              audio.play()
+            }
+            break;
+          }
+        }
+        if (found == false)
+        {
+          if (state_marked)
+          {
+            state_marked = false;
+            redraw_canvas(null);
+          }
+        }
+      }
+
+      function calc_route_length(route){
+        result = 0;
+        if (route.length > 1)
+        {
+          current = map_data[route[0]];
+          route.slice(1).forEach(function(elem, i, arr){
+            next = map_data[elem];
+            result += Math.sqrt(Math.pow(current.x - next.x,2) + Math.pow(current.y - next.y,2));  
+            current = next;
+            
+
+              });
+          }
+        return result;
+      }
+
+      function show_info()
+      {
+        new_route_length = calc_route_length(route);
+        text = `Start point: ${start_point}. Finish point: ${finish_point}. Route length: ${(new_route_length/km_factor).toFixed(3)} km`
+        if (route[route.length-1] == finish_point)
+        {
+          km_minus = new_route_length/km_factor - best_route_km;
+          percent_minus = km_minus*100/best_route_km;
+          text+= `; Your route +${Math.ceil(km_minus*1000)} m (+${percent_minus.toFixed(2)}%)`;
+        }
+        document.getElementById('info').innerText = text;
+        document.getElementById('info').style.fontSize = "16px";
+      }
+
+
+      function mouse_click(event){
+       /*  x_coord = event.pageX;
+        y_coord = event.pageY;
+        gCanvasElement = document.getElementById('example');
+        x_coord -= gCanvasElement.offsetLeft;
+        y_coord -= gCanvasElement.offsetTop;*/
+
+        var [x_coord,y_coord] = get_coords(event);
+        console.log(x_coord,y_coord,event.clientX,event.clientY);
+        var clicked = null;
+        for (var key in map_data)
+        {
+          to_center = Math.sqrt(Math.pow(x_coord-map_data[key].x,2) + Math.pow(y_coord-map_data[key].y,2));
+          if (to_center <= circle_radius){
+            clicked = key;
+            if (route.includes(key))
+              {console.log('already in route');}
+            else
+            {
+              route.push(key);
+              console.log(route.join(' - '));
+              show_info();
+              var audio = document.getElementById("click_sound");
+              audio.play();
+              
+            }
+            break;
+          }
+        }
+        redraw_canvas(clicked);
+      }
+
+      function back()
+      {
+        if(route.length != 1 || test_mode)
+          {
+            route.pop();
+            redraw_canvas(null);
+            show_info();
+          }
+      }
+
+      function key_down(event){
+        if (event.keyCode == 27)
+        {
+          back();
+        }
+      }
+
+      function context_menu(event){
+        event.preventDefault();
+        back();
+        return false;
+      }
+    </script>
+  </body>
+</html>
